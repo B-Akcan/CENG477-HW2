@@ -31,6 +31,12 @@ public:
 	void writeImageToPPMFile(Camera *camera);
 	void convertPPMToPNG(std::string ppmFileName, int osType);
 	void forwardRenderingPipeline(Camera *camera);
+	Matrix4 calculateCameraTransformationMatrix(Camera * camera);
+	Matrix4 calculateProjectionTransformationMatrix(Camera *camera);
+	Matrix4 calculateViewportTransformationMatrix(Camera * camera);
+	Matrix4 calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh);
+	double backfaceCulling(Vec4 v0_transformed, Vec4 v1_transformed, Vec4 v2_transformed);
+	bool visible(double den, double num, double &t_e, double &t_l);
 };
 
 #endif

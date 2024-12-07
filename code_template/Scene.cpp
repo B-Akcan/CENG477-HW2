@@ -361,4 +361,204 @@ void Scene::convertPPMToPNG(string ppmFileName, int osType)
 void Scene::forwardRenderingPipeline(Camera *camera)
 {
 	// TODO: Implement this function
+	Matrix4 M_cam = calculateCameraTransformationMatrix(camera);
+	Matrix4 M_proj = calculateProjectionTransformationMatrix(camera);
+	Matrix4 M_vp = calculateViewportTransformationMatrix(camera);
+
+	for (Mesh *mesh : this->meshes) {
+		Matrix4 M_modeling = calculateModelingTransformationMatrix(camera, mesh);
+		Matrix4 M_proj_cam_modeling = multiplyMatrixWithMatrix(M_proj, multiplyMatrixWithMatrix(M_cam, M_modeling));
+
+		for (int j = 0; j < mesh->numberOfTriangles; j++) {
+			Triangle triangle = mesh->triangles[j];
+			Vec3 *v0 = this->vertices[triangle.vertexIds[0]];
+			Vec3 *v1 = this->vertices[triangle.vertexIds[1]];
+			Vec3 *v2 = this->vertices[triangle.vertexIds[2]];
+			Vec4 v0_homo = {v0->x, v0->y, v0->z, 1};
+			Vec4 v1_homo = {v1->x, v1->y, v1->z, 1};
+			Vec4 v2_homo = {v2->x, v2->y, v2->z, 1};
+
+			Vec4 v0_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v0_homo);
+			Vec4 v1_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v1_homo);
+			Vec4 v2_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v2_homo);
+
+			if (this->cullingEnabled && backfaceCulling(v0_transformed, v1_transformed, v2_transformed) > 0) {
+				continue;
+			}
+
+			// Perspective division
+			Vec3 v0_perspective_divided = {v0_transformed.x / v0_transformed.t, v0_transformed.y / v0_transformed.t, v0_transformed.z / v0_transformed.t};
+			Vec3 v1_perspective_divided = {v1_transformed.x / v1_transformed.t, v1_transformed.y / v1_transformed.t, v1_transformed.z / v1_transformed.t};
+			Vec3 v2_perspective_divided = {v2_transformed.x / v2_transformed.t, v2_transformed.y / v2_transformed.t, v2_transformed.z / v2_transformed.t};
+
+			// Liang-Barsky Clipping
+			if (mesh->type == 0) { // wireframe
+
+			}
+		}
+	}
+}
+
+Matrix4 Scene::calculateCameraTransformationMatrix(Camera *camera) {
+    double T[4][4] = {{1, 0, 0, -(camera->position.x)},
+                        {0, 1, 0, -(camera->position.y)},
+                        {0, 0, 1, -(camera->position.z)},
+                        {0, 0, 0, 1}};
+    double R[4][4] = {{camera->u.x, camera->u.y, camera->u.z, 0},
+                      {camera->v.x, camera->v.y, camera->v.z, 0},
+                      {camera->w.x, camera->w.y, camera->w.z, 0},
+                      {0, 0, 0, 1}};
+
+	Matrix4 T_mat = Matrix4(T);
+	Matrix4 R_mat = Matrix4(R);
+    return multiplyMatrixWithMatrix(R_mat, T_mat);
+}
+
+Matrix4 Scene::calculateProjectionTransformationMatrix(Camera *camera) {
+	if (camera->projectionType == 0) { // orthographic
+		double M[4][4] = {{2.0 / (camera->right - camera->left), 0, 0, -(camera->right + camera->left) / (camera->right - camera->left)},
+							{0, 2.0 / (camera->top - camera->bottom), 0, -(camera->top + camera->bottom) / (camera->top - camera->bottom)},
+							{0, 0, -2.0 / (camera->far - camera->near), -(camera->far + camera->near) / (camera->far - camera->near)},
+							{0, 0, 0, 1}};
+		return Matrix4(M);
+	} else if (camera->projectionType == 1) { // perspective
+		double M[4][4] = {{2.0 * camera->near / (camera->right - camera->left), 0, (camera->right + camera->left) / (camera->right - camera->left), 0},
+							{0, 2.0 * camera->near / (camera->top - camera->bottom), (camera->top + camera->bottom) / (camera->top - camera->bottom), 0},
+							{0, 0, -(camera->far + camera->near) / (camera->far - camera->near), -2.0 * camera->far * camera->near / (camera->far - camera->near)},
+							{0, 0, -1, 0}};
+		return Matrix4(M);
+	}
+
+	return Matrix4();
+}
+
+Matrix4 Scene::calculateViewportTransformationMatrix(Camera *camera) {
+    double M_viewport[4][4] = {{camera->horRes/2.0, 0, 0, (camera->horRes-1)/2.0},
+                               {0, camera->verRes/2.0, 0, (camera->verRes-1)/2.0},
+                               {0, 0, 0.5, 0.5},
+                               {0, 0, 0, 1}};
+    return Matrix4(M_viewport);
+}
+
+Matrix4 Scene::calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh) {
+	Matrix4 M_modeling = getIdentityMatrix();
+	for (int i = 0; i < mesh->numberOfTransformations; i++) {
+		char transformationType = mesh->transformationTypes[i];
+		int transformationId = mesh->transformationIds[i];
+
+		if (transformationType == 't') { // translation
+			double tx = this->translations[transformationId - 1]->tx;
+			double ty = this->translations[transformationId - 1]->ty;
+			double tz = this->translations[transformationId - 1]->tz;
+
+			double M_translation[4][4] = {{1, 0, 0, tx},
+									{0, 1, 0, ty},
+									{0, 0, 1, tz},
+									{0, 0, 0, 1}};
+
+			M_modeling = multiplyMatrixWithMatrix(M_translation, M_modeling);
+		} else if (transformationType == 's') { // scaling
+			double sx = this->scalings[transformationId - 1]->sx;
+			double sy = this->scalings[transformationId - 1]->sy;
+			double sz = this->scalings[transformationId - 1]->sz;
+
+			double M_scaling[4][4] = {{sx, 0, 0, 0},
+										{0, sy, 0, 0},
+										{0, 0, sz, 0},
+										{0, 0, 0, 1}};
+									
+			M_modeling = multiplyMatrixWithMatrix(M_scaling, M_modeling);
+		} else if (transformationType == 'r') { // rotation
+			double angle = this->rotations[transformationId - 1]->angle;
+			double ux = this->rotations[transformationId - 1]->ux;
+			double uy = this->rotations[transformationId - 1]->uy;
+			double uz = this->rotations[transformationId - 1]->uz;
+
+			// Axis to rotate the point around
+			Vec3 u = {ux, uy, uz};
+			Vec3 u_normalized = normalizeVec3(u);
+			double norm_u = magnitudeOfVec3(u);
+
+			// Rotate u around x axis
+			double cos_a = uz / (uy + uz);
+			double sin_a = uy / (uy + uz);
+			double cos_minus_a = cos_a;
+			double sin_minus_a = -sin_a;
+			double R_x_a[4][4] = {{1, 0, 0, 0},
+									{0, cos_a, -sin_a, 0},
+									{0, sin_a, cos_a, 0},
+									{0, 0, 0, 1}};
+			double R_x_minus_a[4][4] = {{1, 0, 0, 0},
+										{0, cos_minus_a, -sin_minus_a, 0},
+										{0, sin_minus_a, cos_minus_a, 0},
+										{0, 0, 0, 1}};
+			
+			// Rotate u around y axis
+			double cos_b = sqrt(pow(uy, 2) + pow(uz, 2)) / norm_u;
+			double sin_b = ux / norm_u;
+			double cos_minus_b = cos_b;
+			double sin_minus_b = -sin_b;
+			double R_y_b[4][4] = {{cos_b, 0, -sin_b, 0},
+									{0, 1, 0, 0},
+									{sin_b, 0, cos_b, 0},
+									{0, 0, 0, 1}};
+			double R_y_minus_b[4][4] = {{cos_minus_b, 0, -sin_minus_b, 0},
+										{0, 1, 0, 0},
+										{sin_minus_b, 0, cos_minus_b, 0},
+										{0, 0, 0, 1}};
+			
+			// Rotate point around u
+			double cos_theta = cos(angle);
+			double sin_theta = sin(angle);
+			double R_z_theta[4][4] = {{cos_theta, -sin_theta, 0, 0},
+										{sin_theta, cos_theta, 0, 0},
+										{0, 0, 1, 0},
+										{0, 0, 0, 1}};
+
+			Matrix4 temp = multiplyMatrixWithMatrix(R_y_minus_b, R_x_a);
+			temp = multiplyMatrixWithMatrix(R_z_theta, temp);
+			temp = multiplyMatrixWithMatrix(R_y_b, temp);
+			temp = multiplyMatrixWithMatrix(R_x_minus_a, temp);
+
+			M_modeling = multiplyMatrixWithMatrix(temp, M_modeling);
+		}
+	}
+
+	return M_modeling;
+}
+
+double Scene::backfaceCulling(Vec4 v0_transformed, Vec4 v1_transformed, Vec4 v2_transformed) {
+	Vec3 v1_minus_v0 = subtractVec3({v1_transformed.x, v1_transformed.y, v1_transformed.z}, {v0_transformed.x, v0_transformed.y, v0_transformed.z});
+	Vec3 v2_minus_v0 = subtractVec3({v2_transformed.x, v2_transformed.y, v2_transformed.z}, {v0_transformed.x, v0_transformed.y, v0_transformed.z});
+	Vec3 normal = crossProductVec3(v1_minus_v0, v2_minus_v0);
+	Vec3 v = {v0_transformed.x, v0_transformed.y, v0_transformed.z}; // v0 - origin (0,0,0)
+	double n_dot_v = dotProductVec3(normal, v);
+
+	return n_dot_v;
+}
+
+bool Scene::visible(double den, double num, double &t_e, double &t_l) {
+	if (den > 0) { // potentially entering
+		double t = num / den;
+		if (t > t_l)
+			return false;
+		if (t > t_e)
+			t_e = t;
+	}
+	else if (den < 0) { // potentially leaving
+		double t = num / den;
+		if (t < t_e)
+			return false;
+		if (t < t_l)
+			t_l = t;
+	}
+	else if (num > 0) // line parallel to edge
+		return false;
+
+	return true;
+}
+
+Vec3 liangBarsky(Vec3 &v0, Vec3 &v1) {
+	double t_e = 0, t_l = 1;
+	bool visible = false;
 }
