@@ -21,6 +21,19 @@ Color::Color(const Color &other)
     this->b = other.b;
 }
 
+Color Color::operator+(Color rhs) {
+    return {this->r + rhs.r, this->g + rhs.g, this->b + rhs.b};
+}
+
+Color Color::operator-(Color  rhs) {
+    return {this->r - rhs.r, this->g - rhs.g, this->b - rhs.b};
+}
+
+Color Color::operator*(double num) {
+    
+    return {this->r*num, this->g*num, this->b*num};
+}
+
 std::ostream &operator<<(std::ostream &os, const Color &c)
 {
     os << std::fixed << std::setprecision(0) << "rgb(" << c.r << ", " << c.g << ", " << c.b << ")";

@@ -37,6 +37,7 @@ public:
 	Matrix4 calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh);
 	double backfaceCulling(Vec4 v0_transformed, Vec4 v1_transformed, Vec4 v2_transformed);
 	bool visible(double den, double num, double &t_e, double &t_l);
+	bool liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color);
 };
 
 #endif

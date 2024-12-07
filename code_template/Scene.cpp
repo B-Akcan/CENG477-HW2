@@ -374,9 +374,13 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec3 *v0 = this->vertices[triangle.vertexIds[0]];
 			Vec3 *v1 = this->vertices[triangle.vertexIds[1]];
 			Vec3 *v2 = this->vertices[triangle.vertexIds[2]];
-			Vec4 v0_homo = {v0->x, v0->y, v0->z, 1};
-			Vec4 v1_homo = {v1->x, v1->y, v1->z, 1};
-			Vec4 v2_homo = {v2->x, v2->y, v2->z, 1};
+			Color v0_color = *(this->colorsOfVertices[triangle.vertexIds[0]]);
+			Color v1_color = *(this->colorsOfVertices[triangle.vertexIds[1]]);
+			Color v2_color = *(this->colorsOfVertices[triangle.vertexIds[2]]);
+
+			Vec4 v0_homo = {v0->x, v0->y, v0->z, 1, v0->colorId};
+			Vec4 v1_homo = {v1->x, v1->y, v1->z, 1, v1->colorId};
+			Vec4 v2_homo = {v2->x, v2->y, v2->z, 1, v1->colorId};
 
 			Vec4 v0_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v0_homo);
 			Vec4 v1_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v1_homo);
@@ -386,14 +390,34 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				continue;
 			}
 
-			// Perspective division
-			Vec3 v0_perspective_divided = {v0_transformed.x / v0_transformed.t, v0_transformed.y / v0_transformed.t, v0_transformed.z / v0_transformed.t};
-			Vec3 v1_perspective_divided = {v1_transformed.x / v1_transformed.t, v1_transformed.y / v1_transformed.t, v1_transformed.z / v1_transformed.t};
-			Vec3 v2_perspective_divided = {v2_transformed.x / v2_transformed.t, v2_transformed.y / v2_transformed.t, v2_transformed.z / v2_transformed.t};
+			// Perspective division (4th element becomes 1, others are /t)
+			Vec4 v0_perspective_divided = {v0_transformed.x / v0_transformed.t, v0_transformed.y / v0_transformed.t, v0_transformed.z / v0_transformed.t, 1, v0_transformed.colorId};
+			Vec4 v1_perspective_divided = {v1_transformed.x / v1_transformed.t, v1_transformed.y / v1_transformed.t, v1_transformed.z / v1_transformed.t, 1, v1_transformed.colorId};
+			Vec4 v2_perspective_divided = {v2_transformed.x / v2_transformed.t, v2_transformed.y / v2_transformed.t, v2_transformed.z / v2_transformed.t, 1, v2_transformed.colorId};
 
 			// Liang-Barsky Clipping
 			if (mesh->type == 0) { // wireframe
-
+				if(liangBarsky(v0_perspective_divided, v1_perspective_divided, v0_color, v1_color)){
+					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
+					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
+					//rasterize line (not triangle)
+				}
+				if(liangBarsky(v1_perspective_divided, v2_perspective_divided, v1_color, v2_color)){
+					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
+					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
+					//rasterize line (not triangle)
+				}
+				if(liangBarsky(v2_perspective_divided, v0_perspective_divided, v2_color, v0_color)){
+					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
+					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
+					//rasterize Line (not triangle)
+				}
+			}
+			else{
+				Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
+				Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
+				Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
+				//rasterize Triangle, not line
 			}
 		}
 	}
@@ -531,7 +555,7 @@ double Scene::backfaceCulling(Vec4 v0_transformed, Vec4 v1_transformed, Vec4 v2_
 	Vec3 v1_minus_v0 = subtractVec3({v1_transformed.x, v1_transformed.y, v1_transformed.z}, {v0_transformed.x, v0_transformed.y, v0_transformed.z});
 	Vec3 v2_minus_v0 = subtractVec3({v2_transformed.x, v2_transformed.y, v2_transformed.z}, {v0_transformed.x, v0_transformed.y, v0_transformed.z});
 	Vec3 normal = crossProductVec3(v1_minus_v0, v2_minus_v0);
-	Vec3 v = {v0_transformed.x, v0_transformed.y, v0_transformed.z}; // v0 - origin (0,0,0)
+	Vec3 v = {v0_transformed.x, v0_transformed.y, v0_transformed.z}; // all vertices are act as camera eye moved to (0,0,0)
 	double n_dot_v = dotProductVec3(normal, v);
 
 	return n_dot_v;
@@ -558,7 +582,39 @@ bool Scene::visible(double den, double num, double &t_e, double &t_l) {
 	return true;
 }
 
-Vec3 liangBarsky(Vec3 &v0, Vec3 &v1) {
+//in place modification of vertices and colors
+bool Scene::liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color) {
 	double t_e = 0, t_l = 1;
-	bool visible = false;
+	bool isVisible = false;
+    
+	double dx = v1.x - v0.x;
+	double dy = v1.y - v0.y;
+	double dz = v1.z - v0.z;
+    
+    Color dc = v1_color - v0_color; //color change rate along the line
+    double x_min = -1, y_min = -1, z_min = -1; //min normalized box borders
+
+    double x_max = 1, y_max = 1, z_max = 1;
+    if (visible(dx, x_min-v0.x, t_e, t_l) && visible(-dx, v0.x-x_max, t_e, t_l)
+        && visible(dy, y_min-v0.y, t_e, t_l) && visible(-dy, v0.y-y_max, t_e, t_l)
+        && visible(dz, z_min-v0.z, t_e, t_l) && visible(-dz, v0.z-z_max, t_e, t_l)) {
+        isVisible = true;
+        /* Check if at least some part of the line is clipped */
+        if (t_l < 1) {
+            v1.x = v0.x + (dx * t_l);
+            v1.y = v0.y + (dy * t_l);
+            v1.z = v0.z + (dz * t_l);
+            v1_color = v0_color + (dc * t_l);
+        }
+        if (t_e > 0) {
+            v0.x = v0.x + (dx * t_e);
+            v0.y = v0.y + (dy * t_e);
+            v0.z = v0.z + (dz * t_e);
+            v0_color = v0_color + (dc * t_l);
+        }
+    }
+
+
+    return isVisible;
 }
+
