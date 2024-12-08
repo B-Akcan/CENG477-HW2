@@ -30,12 +30,23 @@ Color Color::operator-(Color  rhs) {
 }
 
 Color Color::operator*(double num) {
-    
     return {this->r*num, this->g*num, this->b*num};
+}
+
+Color Color::operator/(double num) {
+    return {this->r/num, this->g/num, this->b/num};
 }
 
 std::ostream &operator<<(std::ostream &os, const Color &c)
 {
     os << std::fixed << std::setprecision(0) << "rgb(" << c.r << ", " << c.g << ", " << c.b << ")";
     return os;
+}
+
+Color Color::round() {
+    Color c;
+    c.r = (int)(this->r + 0.5);
+    c.g = (int)(this->g + 0.5);
+    c.b = (int)(this->b + 0.5);
+    return c;
 }

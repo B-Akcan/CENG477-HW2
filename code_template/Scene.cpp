@@ -364,6 +364,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 	Matrix4 M_cam = calculateCameraTransformationMatrix(camera);
 	Matrix4 M_proj = calculateProjectionTransformationMatrix(camera);
 	Matrix4 M_vp = calculateViewportTransformationMatrix(camera);
+	
 
 	for (Mesh *mesh : this->meshes) {
 		Matrix4 M_modeling = calculateModelingTransformationMatrix(camera, mesh);
@@ -400,24 +401,28 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				if(liangBarsky(v0_perspective_divided, v1_perspective_divided, v0_color, v1_color)){
 					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
 					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
-					//rasterize line (not triangle)
+					
+					rasterizeLine(this->image, v0_viewport, v1_viewport, v0_color, v1_color);
 				}
 				if(liangBarsky(v1_perspective_divided, v2_perspective_divided, v1_color, v2_color)){
 					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
 					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
-					//rasterize line (not triangle)
+					
+					rasterizeLine(this->image, v1_viewport, v2_viewport, v1_color, v2_color);
 				}
 				if(liangBarsky(v2_perspective_divided, v0_perspective_divided, v2_color, v0_color)){
 					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
 					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
-					//rasterize Line (not triangle)
+					
+					rasterizeLine(this->image, v2_viewport, v0_viewport, v2_color, v0_color);
 				}
 			}
-			else{
+			else {
 				Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
 				Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
 				Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
-				//rasterize Triangle, not line
+				
+				rasterizeTriangle(this->image, v0_viewport, v1_viewport, v2_viewport, v0_color, v1_color, v2_color);
 			}
 		}
 	}
@@ -618,3 +623,145 @@ bool Scene::liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color) {
     return isVisible;
 }
 
+void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color c0, Color c1) {
+	double dx = abs(v1.x - v0.x);
+	double dy = abs(v1.y - v0.y);
+
+	if (dx > dy) {
+		if (v0.x > v1.x) {
+			swap(v0, v1);
+			swap(c0, c1);
+		}
+		double y = v0.y;
+		bool isYIncreasing = v0.y < v1.y;
+		double d;
+		if (isYIncreasing)
+			d = v0.y - v1.y + 0.5 * (v1.x - v0.x);
+		else
+			d = v0.y - v1.y - 0.5 * (v1.x - v0.x);
+		Color c = c0;
+		Color dc = (c1 - c0) / (v1.x - v0.x);
+
+		for (int x = (int) v0.x; x < (int) v1.x; x++) {
+			image[x][y] = c.round();
+			if (d < 0) {
+				if (isYIncreasing)
+				{
+					y++;
+					d += v0.y - v1.y + (v1.x - v0.x);
+				}
+				else
+				{
+					y--;
+					d += v0.y - v1.y - (v1.x - v0.x);
+				}
+			}
+			else {
+				d += v0.y - v1.y;
+			}
+			c = c + dc;
+		}
+	}
+	else {
+		if (v0.y > v1.y) {
+			swap(v0, v1);
+			swap(c0, c1);
+		}
+		double x = v0.x;
+		bool isXIncreasing = v0.x < v1.x;
+		double d;
+		if (isXIncreasing)
+			d = v0.x - v1.x + 0.5 * (v1.y - v0.y);
+		else
+			d = v0.x - v1.x - 0.5 * (v1.y - v0.y);
+		Color c = c0;
+		Color dc = (c1 - c0) / (v1.x - v0.x);
+
+		for (int y = (int) v0.y; y < (int) v1.y; y++) {
+			image[x][y] = c.round();
+			if (d < 0) {
+				if (isXIncreasing)
+				{
+					x++;
+					d += v0.x - v1.x + (v1.y - v0.y);
+				}
+				else
+				{
+					x--;
+					d += v0.x - v1.x - (v1.y - v0.y);
+				}
+			}
+			else {
+				d += v0.x - v1.x;
+			}
+			c = c + dc;
+		}
+	}
+}
+
+void Scene::rasterizeTriangle(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Vec4 v2, Color c0, Color c1, Color c2) {
+	double ymin = calculateYMin(v0, v1, v2);
+	double xmin = calculateXMin(v0, v1, v2);
+	double ymax = calculateYMax(v0, v1, v2);
+	double xmax = calculateXMax(v0, v1, v2);
+	
+	for (double y = ymin; y < ymax; y++) {
+		for (double x = xmin; x < xmax; x++) {
+			double alpha = f_(x, y, v1.x, v1.y, v2.x, v2.y) / f_(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
+			double beta = f_(x, y, v2.x, v2.y, v0.x, v0.y) / f_(v1.x, v1.y, v2.x, v2.y, v0.x, v0.y);
+			double gama = f_(x, y, v0.x, v0.y, v1.x, v1.y) / f_(v2.x, v2.y, v0.x, v0.y, v1.x, v1.y);
+			if (alpha >= 0 && beta >= 0 && gama >= 0) {
+				Color c = c0 * alpha + c1 * beta + c2 * gama;
+				image[x][y] = c.round();
+			}
+		}
+	}
+}
+
+double f_(double x, double y, double x_0, double y_0, double x_1, double y_1) {
+    return (x * (y_0 - y_1)) + (y * (x_1 - x_0)) + (x_0 * y_1) - (y_0 * x_1);
+}
+
+double calculateYMin(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double ymin;
+	if (v0.y < v1.y && v0.y < v2.y)
+		ymin = v0.y;
+	else if (v1.y < v0.y && v1.y < v2.y)
+		ymin = v1.y;
+	else
+		ymin = v2.y;
+	return ymin;
+}
+
+double calculateXMin(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double xmin;
+	if (v0.x < v1.x && v0.x < v2.x)
+		xmin = v0.x;
+	else if (v1.x < v0.x && v1.x < v2.x)
+		xmin = v1.x;
+	else
+		xmin = v2.x;
+	return xmin;
+}
+
+double calculateYMax(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double ymax;
+	if (v0.y > v1.y && v0.y > v2.y)
+		ymax = v0.y;
+	else if (v1.y > v0.y && v1.y > v2.y)
+		ymax = v1.y;
+	else
+		ymax = v2.y;
+	return ymax;
+}
+
+double calculateXMax(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double xmax;
+	if (v0.x > v1.x && v0.x > v2.x)
+		xmax = v0.x;
+	else if (v1.x > v0.x && v1.x > v2.x)
+		xmax = v1.x;
+	else
+		xmax = v2.x;
+	return xmax;
+}

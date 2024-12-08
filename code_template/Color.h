@@ -12,7 +12,9 @@ public:
     Color operator+(Color );
     Color operator-(Color );
     Color operator*(double);
+    Color operator/(double);
     friend std::ostream &operator<<(std::ostream &os, const Color &c);
+    Color Color::round();
 };
 
 #endif
