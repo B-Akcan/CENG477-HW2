@@ -1,5 +1,6 @@
 #include <iomanip>
 #include "Rotation.h"
+#include <iostream>
 
 Rotation::Rotation() {
     this->rotationId = -1;

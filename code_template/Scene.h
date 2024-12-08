@@ -8,6 +8,7 @@
 #include "Translation.h"
 #include "Camera.h"
 #include "Mesh.h"
+#include "Matrix4.h"
 
 class Scene
 {
@@ -16,6 +17,7 @@ public:
 	bool cullingEnabled;
 
 	std::vector<std::vector<Color> > image;
+	std::vector<std::vector<double>>depthBuffer;//between -1 and 1 doubles
 	std::vector<Camera *> cameras;
 	std::vector<Vec3 *> vertices;
 	std::vector<Color *> colorsOfVertices;
@@ -38,8 +40,8 @@ public:
 	double backfaceCulling(Vec4 v0_transformed, Vec4 v1_transformed, Vec4 v2_transformed);
 	bool visible(double den, double num, double &t_e, double &t_l);
 	bool liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color);
-	void rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color c0, Color c1);
-	void rasterizeTriangle(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Vec4 v2, Color c0, Color c1, Color c2);
+	void rasterizeLine(std::vector<std::vector<Color>> &image, Vec4 v0, Vec4 v1, Color c0, Color c1);
+	void rasterizeTriangle(std::vector<std::vector<Color>> &image, Vec4 v0, Vec4 v1, Vec4 v2, Color c0, Color c1, Color c2);
 };
 
 #endif

@@ -18,6 +18,54 @@ using namespace std;
 /*
 	Parses XML file
 */
+
+double f_(double x, double y, double x_0, double y_0, double x_1, double y_1) {
+    return (x * (y_0 - y_1)) + (y * (x_1 - x_0)) + (x_0 * y_1) - (y_0 * x_1);
+}
+
+double calculateYMin(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double ymin;
+	if (v0.y < v1.y && v0.y < v2.y)
+		ymin = v0.y;
+	else if (v1.y < v0.y && v1.y < v2.y)
+		ymin = v1.y;
+	else
+		ymin = v2.y;
+	return ymin;
+}
+
+double calculateXMin(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double xmin;
+	if (v0.x < v1.x && v0.x < v2.x)
+		xmin = v0.x;
+	else if (v1.x < v0.x && v1.x < v2.x)
+		xmin = v1.x;
+	else
+		xmin = v2.x;
+	return xmin;
+}
+
+double calculateYMax(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double ymax;
+	if (v0.y > v1.y && v0.y > v2.y)
+		ymax = v0.y;
+	else if (v1.y > v0.y && v1.y > v2.y)
+		ymax = v1.y;
+	else
+		ymax = v2.y;
+	return ymax;
+}
+
+double calculateXMax(Vec4 v0, Vec4 v1, Vec4 v2) {
+	double xmax;
+	if (v0.x > v1.x && v0.x > v2.x)
+		xmax = v0.x;
+	else if (v1.x > v0.x && v1.x > v2.x)
+		xmax = v1.x;
+	else
+		xmax = v2.x;
+	return xmax;
+}
 Scene::Scene(const char *xmlPath)
 {
 	const char *str;
@@ -268,6 +316,19 @@ void Scene::initializeImage(Camera *camera)
 			this->image.push_back(rowOfColors);
 		}
 	}
+	if(depthBuffer.empty()){
+		for (int i = 0; i < camera->horRes; i++)
+		{
+			vector<double> rowOfBuffer;
+
+			for (int j = 0; j < camera->verRes; j++)
+			{
+				rowOfBuffer.push_back(1.1);
+			}
+
+			this->depthBuffer.push_back(rowOfBuffer);
+		}
+	}
 	else
 	{
 		for (int i = 0; i < camera->horRes; i++)
@@ -277,6 +338,7 @@ void Scene::initializeImage(Camera *camera)
 				this->image[i][j].r = this->backgroundColor.r;
 				this->image[i][j].g = this->backgroundColor.g;
 				this->image[i][j].b = this->backgroundColor.b;
+				this->depthBuffer[i][j] = 1.1;
 			}
 		}
 	}
@@ -303,8 +365,9 @@ int Scene::makeBetweenZeroAnd255(double value)
 void Scene::writeImageToPPMFile(Camera *camera)
 {
 	ofstream fout;
+	
 
-	fout.open(camera->outputFilename.c_str());
+	fout.open("../outputs/" + camera->outputFilename);
 
 	fout << "P3" << endl;
 	fout << "# " << camera->outputFilename << endl;
@@ -372,12 +435,12 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 
 		for (int j = 0; j < mesh->numberOfTriangles; j++) {
 			Triangle triangle = mesh->triangles[j];
-			Vec3 *v0 = this->vertices[triangle.vertexIds[0]];
-			Vec3 *v1 = this->vertices[triangle.vertexIds[1]];
-			Vec3 *v2 = this->vertices[triangle.vertexIds[2]];
-			Color v0_color = *(this->colorsOfVertices[triangle.vertexIds[0]]);
-			Color v1_color = *(this->colorsOfVertices[triangle.vertexIds[1]]);
-			Color v2_color = *(this->colorsOfVertices[triangle.vertexIds[2]]);
+			Vec3 *v0 = this->vertices[triangle.vertexIds[0]-1];
+			Vec3 *v1 = this->vertices[triangle.vertexIds[1]-1];
+			Vec3 *v2 = this->vertices[triangle.vertexIds[2]-1];
+			Color v0_color = *(this->colorsOfVertices[triangle.vertexIds[0]-1]);
+			Color v1_color = *(this->colorsOfVertices[triangle.vertexIds[1]-1]);
+			Color v2_color = *(this->colorsOfVertices[triangle.vertexIds[2]-1]);
 
 			Vec4 v0_homo = {v0->x, v0->y, v0->z, 1, v0->colorId};
 			Vec4 v1_homo = {v1->x, v1->y, v1->z, 1, v1->colorId};
@@ -473,12 +536,13 @@ Matrix4 Scene::calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh)
 	Matrix4 M_modeling = getIdentityMatrix();
 	for (int i = 0; i < mesh->numberOfTransformations; i++) {
 		char transformationType = mesh->transformationTypes[i];
-		int transformationId = mesh->transformationIds[i];
+		int transformationId = mesh->transformationIds[i] -1; // since transformations start from 1
+		
 
 		if (transformationType == 't') { // translation
-			double tx = this->translations[transformationId - 1]->tx;
-			double ty = this->translations[transformationId - 1]->ty;
-			double tz = this->translations[transformationId - 1]->tz;
+			double tx = this->translations[transformationId]->tx;
+			double ty = this->translations[transformationId]->ty;
+			double tz = this->translations[transformationId]->tz;
 
 			double M_translation[4][4] = {{1, 0, 0, tx},
 									{0, 1, 0, ty},
@@ -487,9 +551,9 @@ Matrix4 Scene::calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh)
 
 			M_modeling = multiplyMatrixWithMatrix(M_translation, M_modeling);
 		} else if (transformationType == 's') { // scaling
-			double sx = this->scalings[transformationId - 1]->sx;
-			double sy = this->scalings[transformationId - 1]->sy;
-			double sz = this->scalings[transformationId - 1]->sz;
+			double sx = this->scalings[transformationId]->sx;
+			double sy = this->scalings[transformationId]->sy;
+			double sz = this->scalings[transformationId]->sz;
 
 			double M_scaling[4][4] = {{sx, 0, 0, 0},
 										{0, sy, 0, 0},
@@ -498,58 +562,38 @@ Matrix4 Scene::calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh)
 									
 			M_modeling = multiplyMatrixWithMatrix(M_scaling, M_modeling);
 		} else if (transformationType == 'r') { // rotation
-			double angle = this->rotations[transformationId - 1]->angle;
-			double ux = this->rotations[transformationId - 1]->ux;
-			double uy = this->rotations[transformationId - 1]->uy;
-			double uz = this->rotations[transformationId - 1]->uz;
-
-			// Axis to rotate the point around
-			Vec3 u = {ux, uy, uz};
-			Vec3 u_normalized = normalizeVec3(u);
-			double norm_u = magnitudeOfVec3(u);
-
-			// Rotate u around x axis
-			double cos_a = uz / (uy + uz);
-			double sin_a = uy / (uy + uz);
-			double cos_minus_a = cos_a;
-			double sin_minus_a = -sin_a;
-			double R_x_a[4][4] = {{1, 0, 0, 0},
-									{0, cos_a, -sin_a, 0},
-									{0, sin_a, cos_a, 0},
-									{0, 0, 0, 1}};
-			double R_x_minus_a[4][4] = {{1, 0, 0, 0},
-										{0, cos_minus_a, -sin_minus_a, 0},
-										{0, sin_minus_a, cos_minus_a, 0},
-										{0, 0, 0, 1}};
-			
-			// Rotate u around y axis
-			double cos_b = sqrt(pow(uy, 2) + pow(uz, 2)) / norm_u;
-			double sin_b = ux / norm_u;
-			double cos_minus_b = cos_b;
-			double sin_minus_b = -sin_b;
-			double R_y_b[4][4] = {{cos_b, 0, -sin_b, 0},
-									{0, 1, 0, 0},
-									{sin_b, 0, cos_b, 0},
-									{0, 0, 0, 1}};
-			double R_y_minus_b[4][4] = {{cos_minus_b, 0, -sin_minus_b, 0},
-										{0, 1, 0, 0},
-										{sin_minus_b, 0, cos_minus_b, 0},
-										{0, 0, 0, 1}};
-			
-			// Rotate point around u
-			double cos_theta = cos(angle);
-			double sin_theta = sin(angle);
-			double R_z_theta[4][4] = {{cos_theta, -sin_theta, 0, 0},
-										{sin_theta, cos_theta, 0, 0},
-										{0, 0, 1, 0},
-										{0, 0, 0, 1}};
-
-			Matrix4 temp = multiplyMatrixWithMatrix(R_y_minus_b, R_x_a);
-			temp = multiplyMatrixWithMatrix(R_z_theta, temp);
-			temp = multiplyMatrixWithMatrix(R_y_b, temp);
-			temp = multiplyMatrixWithMatrix(R_x_minus_a, temp);
-
-			M_modeling = multiplyMatrixWithMatrix(temp, M_modeling);
+		
+		Rotation * r = this->rotations[transformationId]; 
+            
+			//TODO: CHANGE IT A BIT
+            Vec3 u = Vec3(r->ux, r->uy, r->uz, -1), v, w;
+            double minComp = std::min(std::min(abs(r->ux), abs(r->uy)), abs(r->uz));
+            if (minComp == abs(r->ux))
+                v = Vec3(0, -1 * r->uz, r->uy, -1);
+            else if (minComp == abs(r->uy))
+                v = Vec3(-1 * r->uz, 0, r->ux, -1);
+            else if (minComp == abs(r->uz))
+                v = Vec3(-1 * r->uy, r->ux, 0, -1);
+            w = crossProductVec3(u, v);
+            
+            v = normalizeVec3(v);
+            w = normalizeVec3(w);
+            double mMatrix[4][4] = {{u.x,u.y,u.z,0},
+                                    {v.x,v.y,v.z,0},
+                                    {w.x,w.y,w.z,0},
+                                    {0,0,0,1}};
+            double mMatrix_inverse[4][4] = {{u.x,v.x,w.x,0},
+                                            {u.y,v.y,w.y,0},
+                                            {u.z,v.z,w.z,0},
+                                            {0,0,0,1}};
+            
+            double rMatrix[4][4] = {{1,0,0,0},
+                                    {0,cos(r->angle * M_PI/180),(-1) * sin(r->angle * M_PI/180),0},
+                                    {0,sin(r->angle * M_PI/180),cos(r->angle * M_PI/180),0},
+                                    {0,0,0,1}};
+            Matrix4 rot1 = multiplyMatrixWithMatrix(rMatrix, mMatrix);
+            Matrix4 rotRes = multiplyMatrixWithMatrix(mMatrix_inverse, rot1);
+            M_modeling = multiplyMatrixWithMatrix(rotRes, M_modeling);
 		}
 	}
 
@@ -624,6 +668,80 @@ bool Scene::liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color) {
 }
 
 void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color c0, Color c1) {
+
+	double dx = v1.x - v0.x;
+    double dy = v1.y - v0.y;
+    int d, incrAmount = 1;
+    Color dc, c;
+
+    /* First Check if the slope is between 0 < m <= 1 */
+    if (abs(dy) <= abs(dx)) {
+        /* Normal Midpoint Algorithm */
+        if (v1.x < v0.x) {
+            swap(v0, v1);
+            swap(c0, c1);
+        }
+        if (v1.y < v0.y) {
+            /* Make sure that line goes in negative direction in each iteration */
+            incrAmount = -1;
+        }
+
+        int y = v0.y;
+        c = c0;
+        d = (v0.y - v1.y) + (incrAmount * 0.5 * (v1.x - v0.x));
+        dc = (c1 - c0) / (v1.x - v0.x);
+		double dz = (v1.z - v0.z) / (v1.x - v0.x);
+		double current_z = v0.z;
+        for (int x = v0.x; x <= v1.x; x++) {
+			if((depthBuffer[x][y] > current_z)){
+            	image[x][y] = c.round();
+				depthBuffer[x][y] = current_z;
+			}
+            if (d * incrAmount < 0) { // choose NE
+                y += incrAmount;
+                d += (v0.y - v1.y) + (incrAmount * (v1.x - v0.x));
+            }
+            else // choose E
+                d += (v0.y - v1.y);
+            c = c + dc;
+			current_z = current_z + dz;
+        }
+    }
+    else if (abs(dy) > abs(dx)) {
+        /* Modified Midpoint Algorithm for 1 < m < INF */
+        if (v1.y < v0.y) {
+            swap(v0, v1);
+            swap(c0, c1);
+        }
+        if (v1.x < v0.x) {
+            /* Make sure that line goes in negative direction in each iteration */
+            incrAmount = -1;
+        }
+
+        int x = v0.x;
+        c = c0;
+        d = (v1.x - v0.x) + (incrAmount * 0.5 * (v0.y - v1.y));
+        dc = (c1 - c0) / (v1.y - v0.y);
+		double dz = (v1.z - v0.z) / (v1.y - v0.y);
+		double current_z = v0.z;
+        for (int y = v0.y; y <= v1.y; y++) {
+            if((depthBuffer[x][y] > current_z)){
+            	image[x][y] = c.round();
+				depthBuffer[x][y] = current_z;
+			}
+            if (d * incrAmount > 0) {
+                x += incrAmount;
+                d += (v1.x - v0.x) + (incrAmount * (v0.y - v1.y));
+            }
+            else
+                d += (v1.x - v0.x);
+            c = c + dc;
+			current_z = current_z + dz;
+        }
+    }
+
+
+	/*
 	double dx = abs(v1.x - v0.x);
 	double dy = abs(v1.y - v0.y);
 
@@ -644,7 +762,7 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
 
 		for (int x = (int) v0.x; x < (int) v1.x; x++) {
 			image[x][y] = c.round();
-			if (d < 0) {
+			if ((d < 0 && isYIncreasing) || (d > 0 && !isYIncreasing)) {
 				if (isYIncreasing)
 				{
 					y++;
@@ -679,7 +797,7 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
 
 		for (int y = (int) v0.y; y < (int) v1.y; y++) {
 			image[x][y] = c.round();
-			if (d < 0) {
+			if ( (d < 0 && !isXIncreasing) || (d > 0 && isXIncreasing)) {
 				if (isXIncreasing)
 				{
 					x++;
@@ -697,6 +815,7 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
 			c = c + dc;
 		}
 	}
+	*/
 }
 
 void Scene::rasterizeTriangle(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Vec4 v2, Color c0, Color c1, Color c2) {
@@ -712,56 +831,14 @@ void Scene::rasterizeTriangle(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Ve
 			double gama = f_(x, y, v0.x, v0.y, v1.x, v1.y) / f_(v2.x, v2.y, v0.x, v0.y, v1.x, v1.y);
 			if (alpha >= 0 && beta >= 0 && gama >= 0) {
 				Color c = c0 * alpha + c1 * beta + c2 * gama;
-				image[x][y] = c.round();
+				double z_value = alpha * v0.z + beta * v1.z + gama * v2.z;
+				if(depthBuffer[x][y] > z_value){
+					image[x][y] = c.round();
+					depthBuffer[x][y] = z_value;
+				}
+				
 			}
 		}
 	}
 }
 
-double f_(double x, double y, double x_0, double y_0, double x_1, double y_1) {
-    return (x * (y_0 - y_1)) + (y * (x_1 - x_0)) + (x_0 * y_1) - (y_0 * x_1);
-}
-
-double calculateYMin(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double ymin;
-	if (v0.y < v1.y && v0.y < v2.y)
-		ymin = v0.y;
-	else if (v1.y < v0.y && v1.y < v2.y)
-		ymin = v1.y;
-	else
-		ymin = v2.y;
-	return ymin;
-}
-
-double calculateXMin(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double xmin;
-	if (v0.x < v1.x && v0.x < v2.x)
-		xmin = v0.x;
-	else if (v1.x < v0.x && v1.x < v2.x)
-		xmin = v1.x;
-	else
-		xmin = v2.x;
-	return xmin;
-}
-
-double calculateYMax(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double ymax;
-	if (v0.y > v1.y && v0.y > v2.y)
-		ymax = v0.y;
-	else if (v1.y > v0.y && v1.y > v2.y)
-		ymax = v1.y;
-	else
-		ymax = v2.y;
-	return ymax;
-}
-
-double calculateXMax(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double xmax;
-	if (v0.x > v1.x && v0.x > v2.x)
-		xmax = v0.x;
-	else if (v1.x > v0.x && v1.x > v2.x)
-		xmax = v1.x;
-	else
-		xmax = v2.x;
-	return xmax;
-}
