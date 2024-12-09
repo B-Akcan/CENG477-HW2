@@ -1,3 +1,3 @@
 
 all:
-	g++ *.cpp -O3 -o rasterizer
+	g++ -g *.cpp -O3 -o rasterizer

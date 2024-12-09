@@ -17,8 +17,11 @@ int main(int argc, char *argv[])
     
     else
     
+    
+    
     {
-        const char *xmlPath = argv[1];
+
+        const char *xmlPath =   argv[1];
 
         scene = new Scene(xmlPath);
 

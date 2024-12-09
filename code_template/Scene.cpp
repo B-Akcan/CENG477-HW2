@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 #include "tinyxml2.h"
 #include "Triangle.h"
@@ -20,47 +21,19 @@ double f_(double x, double y, double x_0, double y_0, double x_1, double y_1) {
 }
 
 double calculateYMin(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double ymin;
-	if (v0.y < v1.y && v0.y < v2.y)
-		ymin = v0.y;
-	else if (v1.y < v0.y && v1.y < v2.y)
-		ymin = v1.y;
-	else
-		ymin = v2.y;
-	return ymin;
+	return std::min({v0.y, v1.y, v2.y});
 }
 
 double calculateXMin(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double xmin;
-	if (v0.x < v1.x && v0.x < v2.x)
-		xmin = v0.x;
-	else if (v1.x < v0.x && v1.x < v2.x)
-		xmin = v1.x;
-	else
-		xmin = v2.x;
-	return xmin;
+	return std::min({v0.x, v1.x, v2.x});
 }
 
 double calculateYMax(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double ymax;
-	if (v0.y > v1.y && v0.y > v2.y)
-		ymax = v0.y;
-	else if (v1.y > v0.y && v1.y > v2.y)
-		ymax = v1.y;
-	else
-		ymax = v2.y;
-	return ymax;
+	return std::max({v0.y, v1.y, v2.y});
 }
 
 double calculateXMax(Vec4 v0, Vec4 v1, Vec4 v2) {
-	double xmax;
-	if (v0.x > v1.x && v0.x > v2.x)
-		xmax = v0.x;
-	else if (v1.x > v0.x && v1.x > v2.x)
-		xmax = v1.x;
-	else
-		xmax = v2.x;
-	return xmax;
+	return std::max({v0.x, v1.x, v2.x});
 }
 
 int roundDoubleToInt(double val) {
@@ -443,19 +416,19 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec3 *v0 = this->vertices[triangle.vertexIds[0]-1];
 			Vec3 *v1 = this->vertices[triangle.vertexIds[1]-1];
 			Vec3 *v2 = this->vertices[triangle.vertexIds[2]-1];
-			Color v0_color = *(this->colorsOfVertices[triangle.vertexIds[0]-1]);
-			Color v1_color = *(this->colorsOfVertices[triangle.vertexIds[1]-1]);
-			Color v2_color = *(this->colorsOfVertices[triangle.vertexIds[2]-1]);
+			Color v0_color = *(this->colorsOfVertices[v0->colorId-1]);
+			Color v1_color = *(this->colorsOfVertices[v1->colorId-1]);
+			Color v2_color = *(this->colorsOfVertices[v2->colorId-1]);
 
 			Vec4 v0_homo = {v0->x, v0->y, v0->z, 1, v0->colorId};
 			Vec4 v1_homo = {v1->x, v1->y, v1->z, 1, v1->colorId};
-			Vec4 v2_homo = {v2->x, v2->y, v2->z, 1, v1->colorId};
+			Vec4 v2_homo = {v2->x, v2->y, v2->z, 1, v2->colorId};
 
 			Vec4 v0_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v0_homo);
 			Vec4 v1_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v1_homo);
 			Vec4 v2_transformed = multiplyMatrixWithVec4(M_proj_cam_modeling, v2_homo);
 
-			if (this->cullingEnabled && backfaceCulling(v0_transformed, v1_transformed, v2_transformed) > 0) {
+			if (this->cullingEnabled && backfaceCulling(v0_transformed, v1_transformed, v2_transformed) < 0) {
 				continue;
 			}
 
@@ -464,8 +437,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec4 v1_perspective_divided = {v1_transformed.x / v1_transformed.t, v1_transformed.y / v1_transformed.t, v1_transformed.z / v1_transformed.t, 1, v1_transformed.colorId};
 			Vec4 v2_perspective_divided = {v2_transformed.x / v2_transformed.t, v2_transformed.y / v2_transformed.t, v2_transformed.z / v2_transformed.t, 1, v2_transformed.colorId};
 
-			// Liang-Barsky Clipping
-			if (mesh->type == 0) { // wireframe
+			if (mesh->type == 0) { 
 				if(liangBarsky(v0_perspective_divided, v1_perspective_divided, v0_color, v1_color)){
 					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
 					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
@@ -520,8 +492,8 @@ Matrix4 Scene::calculateProjectionTransformationMatrix(Camera *camera) {
 		return Matrix4(M);
 	} else if (camera->projectionType == 1) { // perspective
 		double M[4][4] = {{2.0 * camera->near / (camera->right - camera->left), 0, (camera->right + camera->left) / (camera->right - camera->left), 0},
-							{0, 2.0 * camera->near / (camera->top - camera->bottom), (camera->top + camera->bottom) / (camera->top - camera->bottom), 0},
-							{0, 0, -(camera->far + camera->near) / (camera->far - camera->near), -2.0 * camera->far * camera->near / (camera->far - camera->near)},
+							{0, (2.0 * camera->near) / (camera->top - camera->bottom), (camera->top + camera->bottom) / (camera->top - camera->bottom), 0},
+							{0, 0, -(camera->far + camera->near) / (camera->far - camera->near), (-2.0 * camera->far * camera->near) / (camera->far - camera->near)},
 							{0, 0, -1, 0}};
 		return Matrix4(M);
 	}
@@ -743,20 +715,23 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
 }
 
 void Scene::rasterizeTriangle(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Vec4 v2, Color c0, Color c1, Color c2) {
-	int ymin = roundDoubleToInt(calculateYMin(v0, v1, v2));
-	int xmin = roundDoubleToInt(calculateXMin(v0, v1, v2));
-	int ymax = roundDoubleToInt(calculateYMax(v0, v1, v2));
-	int xmax = roundDoubleToInt(calculateXMax(v0, v1, v2));
+	int ymin = (calculateYMin(v0, v1, v2));
+	int xmin = (calculateXMin(v0, v1, v2));
+	int ymax = (calculateYMax(v0, v1, v2));
+	int xmax = (calculateXMax(v0, v1, v2));
 	
 	for (int y = ymin; y <= ymax; y++) {
 		for (int x = xmin; x <= xmax; x++) {
+			if(x < 0 || y < 0)
+				continue;
 			double alpha = f_(x, y, v1.x, v1.y, v2.x, v2.y) / f_(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
 			double beta = f_(x, y, v2.x, v2.y, v0.x, v0.y) / f_(v1.x, v1.y, v2.x, v2.y, v0.x, v0.y);
 			double gama = f_(x, y, v0.x, v0.y, v1.x, v1.y) / f_(v2.x, v2.y, v0.x, v0.y, v1.x, v1.y);
-			if (alpha >= 0 && beta >= 0 && gama >= 0 && (alpha + beta + gama <= 1 + EPSILON)) {
+			if (alpha >= 0 && beta >= 0 && gama >= 0 ) {
 				Color c = c0 * alpha + c1 * beta + c2 * gama;
 				double z_value = alpha * v0.z + beta * v1.z + gama * v2.z;
-				if(depthBuffer[x][y] > z_value - EPSILON){
+				double value = depthBuffer[x][y];
+				if(value > z_value - EPSILON){
 					image[x][y] = c.round();
 					depthBuffer[x][y] = z_value;
 				}
