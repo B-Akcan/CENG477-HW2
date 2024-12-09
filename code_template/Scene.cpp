@@ -15,10 +15,6 @@
 using namespace tinyxml2;
 using namespace std;
 
-/*
-	Parses XML file
-*/
-
 double f_(double x, double y, double x_0, double y_0, double x_1, double y_1) {
     return (x * (y_0 - y_1)) + (y * (x_1 - x_0)) + (x_0 * y_1) - (y_0 * x_1);
 }
@@ -66,6 +62,11 @@ double calculateXMax(Vec4 v0, Vec4 v1, Vec4 v2) {
 		xmax = v2.x;
 	return xmax;
 }
+
+int roundDoubleToInt(double val) {
+	return (int)(val + 0.5);
+}
+
 Scene::Scene(const char *xmlPath)
 {
 	const char *str;
@@ -338,7 +339,7 @@ void Scene::initializeImage(Camera *camera)
 				this->image[i][j].r = this->backgroundColor.r;
 				this->image[i][j].g = this->backgroundColor.g;
 				this->image[i][j].b = this->backgroundColor.b;
-				this->depthBuffer[i][j] = 1.1;
+				this->depthBuffer[i][j] = __DBL_MAX__;
 			}
 		}
 	}
@@ -365,9 +366,13 @@ int Scene::makeBetweenZeroAnd255(double value)
 void Scene::writeImageToPPMFile(Camera *camera)
 {
 	ofstream fout;
-	
 
-	fout.open("../outputs/" + camera->outputFilename);
+	try {
+		fout.open("../outputs_dev/" + camera->outputFilename);
+	} catch (const std::string& ex) {
+		std::cout << ex << std::endl;
+	}
+	
 
 	fout << "P3" << endl;
 	fout << "# " << camera->outputFilename << endl;
@@ -484,7 +489,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
 				Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
 				Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
-				
+
 				rasterizeTriangle(this->image, v0_viewport, v1_viewport, v2_viewport, v0_color, v1_color, v2_color);
 			}
 		}
@@ -668,21 +673,17 @@ bool Scene::liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color) {
 }
 
 void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color c0, Color c1) {
-
 	double dx = v1.x - v0.x;
     double dy = v1.y - v0.y;
     int d, incrAmount = 1;
     Color dc, c;
 
-    /* First Check if the slope is between 0 < m <= 1 */
     if (abs(dy) <= abs(dx)) {
-        /* Normal Midpoint Algorithm */
         if (v1.x < v0.x) {
             swap(v0, v1);
             swap(c0, c1);
         }
         if (v1.y < v0.y) {
-            /* Make sure that line goes in negative direction in each iteration */
             incrAmount = -1;
         }
 
@@ -692,29 +693,28 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
         dc = (c1 - c0) / (v1.x - v0.x);
 		double dz = (v1.z - v0.z) / (v1.x - v0.x);
 		double current_z = v0.z;
-        for (int x = v0.x; x <= v1.x; x++) {
+
+        for (int x = v0.x; x <= v1.x + EPSILON; x++) {
 			if((depthBuffer[x][y] > current_z)){
             	image[x][y] = c.round();
 				depthBuffer[x][y] = current_z;
 			}
-            if (d * incrAmount < 0) { // choose NE
+            if (d * incrAmount < 0) {
                 y += incrAmount;
                 d += (v0.y - v1.y) + (incrAmount * (v1.x - v0.x));
             }
-            else // choose E
+            else
                 d += (v0.y - v1.y);
             c = c + dc;
 			current_z = current_z + dz;
         }
     }
     else if (abs(dy) > abs(dx)) {
-        /* Modified Midpoint Algorithm for 1 < m < INF */
         if (v1.y < v0.y) {
             swap(v0, v1);
             swap(c0, c1);
         }
         if (v1.x < v0.x) {
-            /* Make sure that line goes in negative direction in each iteration */
             incrAmount = -1;
         }
 
@@ -724,7 +724,8 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
         dc = (c1 - c0) / (v1.y - v0.y);
 		double dz = (v1.z - v0.z) / (v1.y - v0.y);
 		double current_z = v0.z;
-        for (int y = v0.y; y <= v1.y; y++) {
+
+        for (int y = v0.y; y <= v1.y + EPSILON; y++) {
             if((depthBuffer[x][y] > current_z)){
             	image[x][y] = c.round();
 				depthBuffer[x][y] = current_z;
@@ -739,104 +740,26 @@ void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color 
 			current_z = current_z + dz;
         }
     }
-
-
-	/*
-	double dx = abs(v1.x - v0.x);
-	double dy = abs(v1.y - v0.y);
-
-	if (dx > dy) {
-		if (v0.x > v1.x) {
-			swap(v0, v1);
-			swap(c0, c1);
-		}
-		double y = v0.y;
-		bool isYIncreasing = v0.y < v1.y;
-		double d;
-		if (isYIncreasing)
-			d = v0.y - v1.y + 0.5 * (v1.x - v0.x);
-		else
-			d = v0.y - v1.y - 0.5 * (v1.x - v0.x);
-		Color c = c0;
-		Color dc = (c1 - c0) / (v1.x - v0.x);
-
-		for (int x = (int) v0.x; x < (int) v1.x; x++) {
-			image[x][y] = c.round();
-			if ((d < 0 && isYIncreasing) || (d > 0 && !isYIncreasing)) {
-				if (isYIncreasing)
-				{
-					y++;
-					d += v0.y - v1.y + (v1.x - v0.x);
-				}
-				else
-				{
-					y--;
-					d += v0.y - v1.y - (v1.x - v0.x);
-				}
-			}
-			else {
-				d += v0.y - v1.y;
-			}
-			c = c + dc;
-		}
-	}
-	else {
-		if (v0.y > v1.y) {
-			swap(v0, v1);
-			swap(c0, c1);
-		}
-		double x = v0.x;
-		bool isXIncreasing = v0.x < v1.x;
-		double d;
-		if (isXIncreasing)
-			d = v0.x - v1.x + 0.5 * (v1.y - v0.y);
-		else
-			d = v0.x - v1.x - 0.5 * (v1.y - v0.y);
-		Color c = c0;
-		Color dc = (c1 - c0) / (v1.x - v0.x);
-
-		for (int y = (int) v0.y; y < (int) v1.y; y++) {
-			image[x][y] = c.round();
-			if ( (d < 0 && !isXIncreasing) || (d > 0 && isXIncreasing)) {
-				if (isXIncreasing)
-				{
-					x++;
-					d += v0.x - v1.x + (v1.y - v0.y);
-				}
-				else
-				{
-					x--;
-					d += v0.x - v1.x - (v1.y - v0.y);
-				}
-			}
-			else {
-				d += v0.x - v1.x;
-			}
-			c = c + dc;
-		}
-	}
-	*/
 }
 
 void Scene::rasterizeTriangle(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Vec4 v2, Color c0, Color c1, Color c2) {
-	double ymin = calculateYMin(v0, v1, v2);
-	double xmin = calculateXMin(v0, v1, v2);
-	double ymax = calculateYMax(v0, v1, v2);
-	double xmax = calculateXMax(v0, v1, v2);
+	int ymin = roundDoubleToInt(calculateYMin(v0, v1, v2));
+	int xmin = roundDoubleToInt(calculateXMin(v0, v1, v2));
+	int ymax = roundDoubleToInt(calculateYMax(v0, v1, v2));
+	int xmax = roundDoubleToInt(calculateXMax(v0, v1, v2));
 	
-	for (double y = ymin; y < ymax; y++) {
-		for (double x = xmin; x < xmax; x++) {
+	for (int y = ymin; y <= ymax; y++) {
+		for (int x = xmin; x <= xmax; x++) {
 			double alpha = f_(x, y, v1.x, v1.y, v2.x, v2.y) / f_(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
 			double beta = f_(x, y, v2.x, v2.y, v0.x, v0.y) / f_(v1.x, v1.y, v2.x, v2.y, v0.x, v0.y);
 			double gama = f_(x, y, v0.x, v0.y, v1.x, v1.y) / f_(v2.x, v2.y, v0.x, v0.y, v1.x, v1.y);
-			if (alpha >= 0 && beta >= 0 && gama >= 0) {
+			if (alpha >= 0 && beta >= 0 && gama >= 0 && (alpha + beta + gama <= 1 + EPSILON)) {
 				Color c = c0 * alpha + c1 * beta + c2 * gama;
 				double z_value = alpha * v0.z + beta * v1.z + gama * v2.z;
-				if(depthBuffer[x][y] > z_value){
+				if(depthBuffer[x][y] > z_value - EPSILON){
 					image[x][y] = c.round();
 					depthBuffer[x][y] = z_value;
 				}
-				
 			}
 		}
 	}

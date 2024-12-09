@@ -9,6 +9,7 @@
 #include "Camera.h"
 #include "Mesh.h"
 #include "Matrix4.h"
+#include <iostream>
 
 class Scene
 {
