@@ -332,7 +332,6 @@ int Scene::makeBetweenZeroAnd255(double value)
 	return (int)(value);
 }
 
-
 /*
 	Writes contents of image (Color**) into a PPM file.
 */
@@ -341,7 +340,7 @@ void Scene::writeImageToPPMFile(Camera *camera)
 	ofstream fout;
 
 	try {
-		fout.open("../outputs_dev/" + camera->outputFilename);
+		fout.open(camera->outputFilename);
 	} catch (const std::string& ex) {
 		std::cout << ex << std::endl;
 	}
@@ -539,38 +538,44 @@ Matrix4 Scene::calculateModelingTransformationMatrix(Camera *camera, Mesh *mesh)
 									
 			M_modeling = multiplyMatrixWithMatrix(M_scaling, M_modeling);
 		} else if (transformationType == 'r') { // rotation
-		
-		Rotation * r = this->rotations[transformationId]; 
+			double angle = this->rotations[transformationId]->angle;
+			double ux = this->rotations[transformationId]->ux;
+			double uy = this->rotations[transformationId]->uy;
+			double uz = this->rotations[transformationId]->uz;
             
-			//TODO: CHANGE IT A BIT
-            Vec3 u = Vec3(r->ux, r->uy, r->uz, -1), v, w;
-            double minComp = std::min(std::min(abs(r->ux), abs(r->uy)), abs(r->uz));
-            if (minComp == abs(r->ux))
-                v = Vec3(0, -1 * r->uz, r->uy, -1);
-            else if (minComp == abs(r->uy))
-                v = Vec3(-1 * r->uz, 0, r->ux, -1);
-            else if (minComp == abs(r->uz))
-                v = Vec3(-1 * r->uy, r->ux, 0, -1);
+            Vec3 u = Vec3(ux, uy, uz, -1), v, w;
+			double abs_ux = abs(ux);
+			double abs_uy = abs(uy);
+			double abs_uz = abs(uz);
+            double minimumComponent = std::min(std::min(abs_ux, abs_uy), abs_uz);
+            if (minimumComponent == abs_ux)
+                v = Vec3(0, -uz, uy, -1);
+            else if (minimumComponent == abs_uy)
+                v = Vec3(-uz, 0, ux, -1);
+            else if (minimumComponent == abs_uz)
+                v = Vec3(-uy, ux, 0, -1);
             w = crossProductVec3(u, v);
             
             v = normalizeVec3(v);
             w = normalizeVec3(w);
-            double mMatrix[4][4] = {{u.x,u.y,u.z,0},
-                                    {v.x,v.y,v.z,0},
-                                    {w.x,w.y,w.z,0},
-                                    {0,0,0,1}};
-            double mMatrix_inverse[4][4] = {{u.x,v.x,w.x,0},
-                                            {u.y,v.y,w.y,0},
-                                            {u.z,v.z,w.z,0},
-                                            {0,0,0,1}};
+
+            double M[4][4] = {{u.x, u.y, u.z, 0},
+								{v.x, v.y, v.z, 0},
+								{w.x, w.y, w.z, 0},
+								{0, 0, 0, 1}};
+            double M_inverse[4][4] = {{u.x, v.x, w.x, 0},
+										{u.y, v.y, w.y, 0},
+										{u.z, v.z, w.z, 0},
+										{0, 0, 0, 1}};
             
-            double rMatrix[4][4] = {{1,0,0,0},
-                                    {0,cos(r->angle * M_PI/180),(-1) * sin(r->angle * M_PI/180),0},
-                                    {0,sin(r->angle * M_PI/180),cos(r->angle * M_PI/180),0},
-                                    {0,0,0,1}};
-            Matrix4 rot1 = multiplyMatrixWithMatrix(rMatrix, mMatrix);
-            Matrix4 rotRes = multiplyMatrixWithMatrix(mMatrix_inverse, rot1);
-            M_modeling = multiplyMatrixWithMatrix(rotRes, M_modeling);
+			double radian_angle = angle * M_PI/180;
+            double R_x_theta[4][4] = {{1, 0, 0, 0},
+                                    {0, cos(radian_angle), -sin(radian_angle), 0},
+                                    {0, sin(radian_angle), cos(radian_angle), 0},
+                                    {0, 0, 0, 1}};
+            Matrix4 temp = multiplyMatrixWithMatrix(R_x_theta, M);
+            temp = multiplyMatrixWithMatrix(M_inverse, temp);
+            M_modeling = multiplyMatrixWithMatrix(temp, M_modeling);
 		}
 	}
 
@@ -645,69 +650,81 @@ bool Scene::liangBarsky(Vec4 &v0, Vec4 &v1, Color& v0_color, Color& v1_color) {
 }
 
 void Scene::rasterizeLine(vector<vector<Color>> &image, Vec4 v0, Vec4 v1, Color c0, Color c1) {
-	double dx = v1.x - v0.x;
-    double dy = v1.y - v0.y;
-    int d, incrAmount = 1;
-    Color dc, c;
+	double abs_dx = abs(v1.x - v0.x);
+	double abs_dy = abs(v1.y - v0.y);
 
-    if (abs(dy) <= abs(dx)) {
+    if (abs_dy <= abs_dx) {
+		int sign;
+
         if (v1.x < v0.x) {
             swap(v0, v1);
             swap(c0, c1);
         }
         if (v1.y < v0.y) {
-            incrAmount = -1;
+            sign = -1;
         }
+		else {
+			sign = 1;
+		}
 
         int y = v0.y;
-        c = c0;
-        d = (v0.y - v1.y) + (incrAmount * 0.5 * (v1.x - v0.x));
-        dc = (c1 - c0) / (v1.x - v0.x);
+        Color c = c0;
+		Color dc = (c1 - c0) / (v1.x - v0.x);
+        double d = (v0.y - v1.y) + (sign * (v1.x - v0.x) / 2);
 		double dz = (v1.z - v0.z) / (v1.x - v0.x);
 		double current_z = v0.z;
 
         for (int x = v0.x; x <= v1.x + EPSILON; x++) {
-			if((depthBuffer[x][y] > current_z)){
+			if (depthBuffer[x][y] > current_z) {
             	image[x][y] = c.round();
 				depthBuffer[x][y] = current_z;
 			}
-            if (d * incrAmount < 0) {
-                y += incrAmount;
-                d += (v0.y - v1.y) + (incrAmount * (v1.x - v0.x));
+
+            if (sign * d < 0) {
+                y += sign;
+                d += (v0.y - v1.y) + (sign * (v1.x - v0.x));
             }
             else
                 d += (v0.y - v1.y);
+
             c = c + dc;
 			current_z = current_z + dz;
         }
     }
-    else if (abs(dy) > abs(dx)) {
+    else {
+		int sign;
+
         if (v1.y < v0.y) {
             swap(v0, v1);
             swap(c0, c1);
         }
         if (v1.x < v0.x) {
-            incrAmount = -1;
+            sign = -1;
         }
+		else {
+			sign = 1;
+		}
 
         int x = v0.x;
-        c = c0;
-        d = (v1.x - v0.x) + (incrAmount * 0.5 * (v0.y - v1.y));
-        dc = (c1 - c0) / (v1.y - v0.y);
+        Color c = c0;
+		Color dc = (c1 - c0) / (v1.y - v0.y);
+        double d = (v1.x - v0.x) + (sign * (v0.y - v1.y) / 2);
 		double dz = (v1.z - v0.z) / (v1.y - v0.y);
 		double current_z = v0.z;
 
         for (int y = v0.y; y <= v1.y + EPSILON; y++) {
-            if((depthBuffer[x][y] > current_z)){
+            if (depthBuffer[x][y] > current_z) {
             	image[x][y] = c.round();
 				depthBuffer[x][y] = current_z;
 			}
-            if (d * incrAmount > 0) {
-                x += incrAmount;
-                d += (v1.x - v0.x) + (incrAmount * (v0.y - v1.y));
+
+            if (sign * d > 0) {
+                x += sign;
+                d += (v1.x - v0.x) + (sign * (v0.y - v1.y));
             }
             else
                 d += (v1.x - v0.x);
+				
             c = c + dc;
 			current_z = current_z + dz;
         }
