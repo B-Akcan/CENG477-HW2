@@ -436,24 +436,37 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec4 v1_perspective_divided = {v1_transformed.x / v1_transformed.t, v1_transformed.y / v1_transformed.t, v1_transformed.z / v1_transformed.t, 1, v1_transformed.colorId};
 			Vec4 v2_perspective_divided = {v2_transformed.x / v2_transformed.t, v2_transformed.y / v2_transformed.t, v2_transformed.z / v2_transformed.t, 1, v2_transformed.colorId};
 
-			if (mesh->type == 0) { 
-				if(liangBarsky(v0_perspective_divided, v1_perspective_divided, v0_color, v1_color)){
-					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
-					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
+			if (mesh->type == 0) {
+				//prevent double Vec4 and Color modification from multiple LiangBarsky calling
+				Vec4 v0_copy = v0_perspective_divided;
+				Vec4 v1_copy = v1_perspective_divided;
+				Color v0_color_copy = v0_color;
+				Color v1_color_copy = v1_color;
+				if(liangBarsky(v0_copy, v1_copy, v0_color_copy, v1_color_copy)){
+					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_copy);
+					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_copy);
 					
-					rasterizeLine(this->image, v0_viewport, v1_viewport, v0_color, v1_color);
+					rasterizeLine(this->image, v0_viewport, v1_viewport, v0_color_copy, v1_color_copy);
 				}
-				if(liangBarsky(v1_perspective_divided, v2_perspective_divided, v1_color, v2_color)){
-					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_perspective_divided);
-					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
+				Vec4 v1_copy_second = v1_perspective_divided;
+				Vec4 v2_copy = v2_perspective_divided;
+				Color v1_color_copy_second = v1_color;
+				Color v2_color_copy = v2_color;
+				if(liangBarsky(v1_copy_second, v2_copy, v1_color_copy_second, v2_color_copy)){
+					Vec4 v1_viewport = multiplyMatrixWithVec4(M_vp, v1_copy_second);
+					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_copy);
 					
-					rasterizeLine(this->image, v1_viewport, v2_viewport, v1_color, v2_color);
+					rasterizeLine(this->image, v1_viewport, v2_viewport, v1_color_copy_second, v2_color_copy);
 				}
-				if(liangBarsky(v2_perspective_divided, v0_perspective_divided, v2_color, v0_color)){
-					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_perspective_divided);
-					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_perspective_divided);
+				Vec4 v2_copy_second = v2_perspective_divided;
+				Vec4 v0_copy_second = v0_perspective_divided;
+				Color v2_color_copy_second = v2_color;
+				Color v0_color_copy_second = v0_color;
+				if(liangBarsky(v2_copy_second, v0_copy_second, v2_color_copy_second, v0_color_copy_second)){
+					Vec4 v2_viewport = multiplyMatrixWithVec4(M_vp, v2_copy_second);
+					Vec4 v0_viewport = multiplyMatrixWithVec4(M_vp, v0_copy_second);
 					
-					rasterizeLine(this->image, v2_viewport, v0_viewport, v2_color, v0_color);
+					rasterizeLine(this->image, v2_viewport, v0_viewport, v2_color_copy_second, v0_color_copy_second);
 				}
 			}
 			else {
